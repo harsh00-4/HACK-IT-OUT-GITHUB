@@ -4,134 +4,98 @@ import React, { Suspense, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 
 /**
- * MISSION CONTROL: BULLETPROOF PHOTOREALISTIC GLOBE
+ * 🛰️ MISSION CONTROL: ROBUST PHOTOREALISTIC GLOBE
  * 
- * Features:
- * 1. Safe Texture Loading: Uses manual THREE.TextureLoader with cross-origin support.
- * 2. Visual Fallback: If NASA textures fail to load (CORS), it defaults to a 
- *    high-fidelity "Deep Sea" blue sphere with a digital grid.
- * 3. Multi-Layering: Supports Earth surface, cloud layer, and atmospheric glow.
+ * Stability First:
+ * 1. Immediate Render: No Suspense-throwing hooks (like useTexture).
+ * 2. Async Loading: Textures load in background and apply only when ready.
+ * 3. Digital Fallback: Beautiful cyan/navy procedural sphere during loading/error.
  */
 
-const TEXTURE_SOURCES = {
-  day: "https://unpkg.com/three-globe/example/img/earth-day.jpg",
-  night: "https://unpkg.com/three-globe/example/img/earth-night.jpg",
-  clouds: "https://unpkg.com/three-globe/example/img/earth-clouds.png"
-};
+const SATELLITE_CONFIG = [
+  { id: 'ISS', color: '#22d3ee', r: 1.55, speed: 0.1, inc: 0.7 },
+  { id: 'LANDSAT', color: '#38bdf8', r: 1.75, speed: 0.08, inc: 1.1 },
+  { id: 'CARTOSAT', color: '#fbbf24', r: 1.65, speed: 0.12, inc: 0.3 },
+  { id: 'EOS-04', color: '#f59e0b', r: 1.85, speed: 0.06, inc: 1.4 }
+];
 
-function BulletproofEarth() {
+function EarthCore() {
   const earthRef = useRef<THREE.Mesh>(null);
   const cloudRef = useRef<THREE.Mesh>(null);
-  
-  const [textures, setTextures] = useState<{ day: THREE.Texture | null, night: THREE.Texture | null, clouds: THREE.Texture | null }>({
-    day: null,
-    night: null,
-    clouds: null
-  });
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+  const [clouds, setClouds] = useState<THREE.Texture | null>(null);
 
   useEffect(() => {
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin("anonymous");
+    
+    // Load Day Map
+    loader.load(
+      "https://unpkg.com/three-globe/example/img/earth-day.jpg",
+      (tex) => setTexture(tex),
+      undefined,
+      (err) => console.error("Global Texture Load Error:", err)
+    );
 
-    const load = async () => {
-      try {
-        const [day, night, clouds] = await Promise.all([
-          new Promise<THREE.Texture>((res) => loader.load(TEXTURE_SOURCES.day, res, undefined, () => {})),
-          new Promise<THREE.Texture>((res) => loader.load(TEXTURE_SOURCES.night, res, undefined, () => {})),
-          new Promise<THREE.Texture>((res) => loader.load(TEXTURE_SOURCES.clouds, res, undefined, () => {}))
-        ]);
-        setTextures({ day, night, clouds });
-      } catch (e) {
-        console.warn("NASA Satellite Link (Textures) blocked or slow. Falling back to digital projection.");
-      }
-    };
-    load();
+    // Load Cloud Map
+    loader.load(
+      "https://unpkg.com/three-globe/example/img/earth-clouds.png",
+      (tex) => setClouds(tex),
+      undefined,
+      (err) => console.error("Cloud Texture Load Error:", err)
+    );
   }, []);
 
   useFrame(({ clock }) => {
-    const elapsed = clock.getElapsedTime();
-    if (earthRef.current) earthRef.current.rotation.y = elapsed * 0.04;
-    if (cloudRef.current) cloudRef.current.rotation.y = elapsed * 0.05;
+    const t = clock.getElapsedTime();
+    if (earthRef.current) earthRef.current.rotation.y = t * 0.03;
+    if (cloudRef.current) cloudRef.current.rotation.y = t * 0.04;
   });
 
   return (
     <group>
-      {/* 🌏 PRIMARY EARTH SPHERE */}
       <mesh ref={earthRef}>
         <sphereGeometry args={[1.2, 64, 64]} />
-        {textures.day ? (
-          <meshStandardMaterial 
-            map={textures.day} 
-            emissiveMap={textures.night}
-            emissive={new THREE.Color("#ffffff")}
-            emissiveIntensity={textures.night ? 0.6 : 0}
-            metalness={0.2}
-            roughness={0.8}
-          />
+        {texture ? (
+          <meshStandardMaterial map={texture} roughness={0.7} metalness={0.2} />
         ) : (
-          <meshStandardMaterial 
-            color="#083344" 
-            emissive="#0e7490" 
-            emissiveIntensity={0.2} 
-            metalness={0.9} 
-            roughness={0.1} 
-          />
+          <meshStandardMaterial color="#083344" emissive="#0e7490" emissiveIntensity={0.2} metalness={0.9} roughness={0.1} />
         )}
       </mesh>
       
-      {/* ☁️ DYNAMIC CLOUD LAYER */}
-      {textures.clouds && (
+      {clouds && (
         <mesh ref={cloudRef}>
-          <sphereGeometry args={[1.215, 64, 64]} />
-          <meshStandardMaterial 
-            map={textures.clouds} 
-            transparent 
-            opacity={0.3} 
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
+          <sphereGeometry args={[1.21, 64, 64]} />
+          <meshStandardMaterial map={clouds} transparent opacity={0.3} depthWrite={false} blending={THREE.AdditiveBlending} />
         </mesh>
       )}
 
-      {/* 🌐 MISSION GRID (Always visible for NASA feel) */}
+      {/* Mission Grid - Constant Visual */}
       <mesh>
-        <sphereGeometry args={[1.21, 32, 32]} />
-        <meshBasicMaterial color="#22d3ee" wireframe transparent opacity={0.06} />
+        <sphereGeometry args={[1.205, 32, 32]} />
+        <meshBasicMaterial color="#22d3ee" wireframe transparent opacity={0.04} />
       </mesh>
     </group>
   );
 }
 
-function AtmosphericGlow() {
+function Atmosphere() {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     if (ref.current) {
-      const s = 1.08 + Math.sin(clock.getElapsedTime()) * 0.003;
+      const s = 1.08 + Math.sin(clock.getElapsedTime()) * 0.002;
       ref.current.scale.set(s, s, s);
     }
   });
   return (
     <mesh ref={ref}>
       <sphereGeometry args={[1.2, 64, 64]} />
-      <meshPhongMaterial
-        color="#22d3ee"
-        transparent
-        opacity={0.15}
-        side={THREE.BackSide}
-        blending={THREE.AdditiveBlending}
-      />
+      <meshPhongMaterial color="#22d3ee" transparent opacity={0.1} side={THREE.BackSide} blending={THREE.AdditiveBlending} />
     </mesh>
   );
 }
 
-const SATELLITE_CONFIG = [
-  { id: 'ISS', color: '#22d3ee', r: 1.5, speed: 0.12, inc: 0.6 },
-  { id: 'LANDSAT', color: '#38bdf8', r: 1.7, speed: 0.09, inc: 1.1 },
-  { id: 'CARTOSAT', color: '#fbbf24', r: 1.6, speed: 0.1, inc: 0.4 },
-  { id: 'EOS-04', color: '#f59e0b', r: 1.8, speed: 0.07, inc: 1.3 }
-];
-
-function SatellitePoint({ config }: { config: any }) {
+function Satellite({ config }: { config: any }) {
   const meshRef = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() * config.speed;
@@ -143,30 +107,29 @@ function SatellitePoint({ config }: { config: any }) {
   return (
     <group>
       <mesh rotation={[Math.PI / 2, config.inc * 0.2, 0]}>
-        <ringGeometry args={[config.r - 0.002, config.r + 0.002, 64]} />
-        <meshBasicMaterial color={config.color} transparent opacity={0.1} side={THREE.DoubleSide} />
+        <ringGeometry args={[config.r - 0.002, config.r + 0.002, 128]} />
+        <meshBasicMaterial color={config.color} transparent opacity={0.12} side={THREE.DoubleSide} />
       </mesh>
       <mesh ref={meshRef}>
         <sphereGeometry args={[0.02, 12, 12]} />
         <meshStandardMaterial color={config.color} emissive={config.color} emissiveIntensity={5} />
-        <pointLight color={config.color} intensity={0.5} distance={1} />
       </mesh>
     </group>
   );
 }
 
-function LocationPin({ lat, lon }: { lat: number; lon: number }) {
+function Pin({ lat, lon }: { lat: number; lon: number }) {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lon + 180) * (Math.PI / 180);
-  const r = 1.22;
+  const r = 1.23;
   const x = -(r * Math.sin(phi) * Math.cos(theta));
   const z = r * Math.sin(phi) * Math.sin(theta);
   const y = r * Math.cos(phi);
   return (
     <group position={[x, y, z]}>
       <mesh>
-        <sphereGeometry args={[0.03, 16, 16]} />
-        <meshStandardMaterial color="#f43f5e" emissive="#f43f5e" emissiveIntensity={5} />
+        <sphereGeometry args={[0.02, 16, 16]} />
+        <meshStandardMaterial color="#f43f5e" emissive="#f43f5e" emissiveIntensity={10} />
       </mesh>
     </group>
   );
@@ -183,37 +146,29 @@ export function Globe3D(props: {
        <div className="absolute top-4 left-4 z-10 flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="hud-label text-[10px] text-emerald-400 font-extrabold uppercase">SAT_LINK: NASA_BLUE_MARBLE</span>
+            <span className="hud-label text-[10px] text-emerald-400 font-black tracking-widest uppercase">SAT_LINK: NASA_BLUE_MARBLE_SYNC</span>
           </div>
        </div>
        
-       <Canvas camera={{ position: [0, 0, 3.5], fov: 40 }} dpr={[1, 2]}>
+       <Canvas camera={{ position: [0, 0, 3.6], fov: 40 }} dpr={[1, 2]}>
           <ambientLight intensity={0.5} />
-          <directionalLight position={[10, 10, 10]} intensity={1.5} color="#ffffff" />
+          <pointLight position={[10, 10, 10]} intensity={1.5} />
           
           <Suspense fallback={null}>
-            <BulletproofEarth />
+            <EarthCore />
             <Atmosphere />
-            <LocationPin lat={props.location.lat} lon={props.location.lon} />
-            {SATELLITE_CONFIG.map(config => (
-              <SatellitePoint key={config.id} config={config} />
-            ))}
+            <Pin lat={props.location.lat} lon={props.location.lon} />
+            {SATELLITE_CONFIG.map(s => <Satellite key={s.id} config={s} />)}
           </Suspense>
           
-          <Stars radius={200} depth={100} count={3000} factor={6} saturation={0} fade speed={1} />
+          <Stars radius={200} depth={100} count={4000} factor={6} saturation={0} fade speed={1.2} />
           
-          <OrbitControls 
-            enablePan={false} 
-            minDistance={1.7} 
-            maxDistance={5.5}
-            rotateSpeed={0.5}
-            enableDamping
-          />
+          <OrbitControls enablePan={false} minDistance={1.7} maxDistance={5.5} rotateSpeed={0.5} enableDamping />
        </Canvas>
 
-       <div className="absolute bottom-4 right-4 z-10 glass-panel p-2 px-4 bg-black/60 flex flex-col gap-1">
-          <span className="hud-label text-[8px] opacity-60 font-black tracking-widest uppercase">LATITUDE / LONGITUDE</span>
-          <div className="hud-value text-[10px] text-cyan-400 flex gap-3">
+       <div className="absolute bottom-4 right-4 z-10 glass-panel p-2 px-4 bg-black/60 backdrop-blur-md rounded border border-white/5">
+          <span className="hud-label text-[8px] opacity-60 font-black uppercase tracking-widest">POSITION_TELEMETRY</span>
+          <div className="hud-value text-[10px] text-cyan-400 flex gap-4">
              <span>L: {props.location.lat.toFixed(2)}</span>
              <span>G: {props.location.lon.toFixed(2)}</span>
           </div>
